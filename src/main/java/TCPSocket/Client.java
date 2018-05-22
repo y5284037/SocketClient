@@ -1,12 +1,14 @@
 package TCPSocket;
 
-import java.io.DataOutputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import org.apache.log4j.Logger;
+
+import java.io.*;
 import java.net.ConnectException;
 import java.net.Socket;
 import java.net.SocketException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Properties;
 import java.util.Random;
 
 /**
@@ -17,36 +19,42 @@ import java.util.Random;
  */
 
 public class Client {
+    private static Logger logger = Logger.getLogger(Client.class);
+    private static Properties properties = new Properties();
     public static void main(String[] args) throws IOException {
+        properties.load(Object.class.getResourceAsStream("/config.properties"));
+    
         //客户端请求与本机在20006端口建立TCP连接
-        Socket client = new Socket("127.0.0.1", 20006);
+        Socket client = new Socket(properties.getProperty("host"), new Integer(properties.getProperty("hostProt")));
+        logger.info("连接服务端成功");
         client.setSoTimeout(10000);
         //获取Socket的输出流，用来发送数据到服务端
         DataOutputStream out = new DataOutputStream(client.getOutputStream());
-        
+        BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(properties.getProperty("dataLocation"), true)));
         boolean flag = true;
-        while(flag){
+        while (flag) {
             try {
-                byte[] arr = new byte[510];
+                byte[] arr = new byte[new Integer(properties.getProperty("dataSize"))];
                 Random random = new Random();
                 for (int i = 0; i < arr.length; i++) {
-                    arr[i] = (byte) random.nextInt(128);
+                    arr[i] = (byte) (random.nextInt(94) + 33);
                 }
                 out.write(arr);
-                FileOutputStream fos = new FileOutputStream("data.txt", true);
-                fos.write(arr);
-                fos.write("\r\n".getBytes());
-                fos.close();
+                bw.write(new String(arr));
+                bw.newLine();
+                bw.flush();
+                logger.info("Data Send Success");
                 Thread.sleep(1000);
             } catch (SocketException e) {
                 boolean a = true;
                 while (a) {
                     try {
-                        client = new Socket("127.0.0.1", 20006);
+                        client = new Socket(properties.getProperty("host"), new Integer(properties.getProperty("hostProt")));
+                        logger.info("连接服务端成功");
                         a = false;
                     } catch (SocketException e1) {
-                        System.out.println("连接失败,5秒后重连");
                         try {
+                            logger.info("断开连接，等待重连.");
                             Thread.sleep(5000);
                         } catch (InterruptedException e2) {
                             e2.printStackTrace();
@@ -60,11 +68,10 @@ public class Client {
                 e.printStackTrace();
             }
         }
-        if(client != null){
+        if (client != null) {
             //如果构造函数建立起了连接，则关闭套接字，如果没有建立起连接，自然不用关闭
+            bw.close();
             client.close(); //只关闭socket，其关联的输入输出流也会被关闭
         }
     }
-    
-    
 }
