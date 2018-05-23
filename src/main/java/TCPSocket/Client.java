@@ -1,13 +1,9 @@
 package TCPSocket;
 
-import org.apache.log4j.Logger;
-
-import java.io.*;
-import java.net.ConnectException;
+import java.io.DataOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.net.Socket;
-import java.net.SocketException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Properties;
 import java.util.Random;
 
@@ -19,59 +15,85 @@ import java.util.Random;
  */
 
 public class Client {
-    private static Logger logger = Logger.getLogger(Client.class);
-    private static Properties properties = new Properties();
-    public static void main(String[] args) throws IOException {
-        properties.load(Object.class.getResourceAsStream("/config.properties"));
+    private static Properties config;
+    private static String host;
+    private static int hostPort;
+    private static int dataSize;
+    private static long DataInterval;
+    private static long ReconnectInterval;
+    private static Socket client;
+    private static DataOutputStream socketDataOut;
     
-        //客户端请求与本机在20006端口建立TCP连接
-        Socket client = new Socket(properties.getProperty("host"), new Integer(properties.getProperty("hostProt")));
-        logger.info("连接服务端成功");
-        client.setSoTimeout(10000);
-        //获取Socket的输出流，用来发送数据到服务端
-        DataOutputStream out = new DataOutputStream(client.getOutputStream());
-        BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(properties.getProperty("dataLocation"), true)));
-        boolean flag = true;
-        while (flag) {
+    public static void main(String[] args) throws InterruptedException {
+        try {
+            init();//进行程序初始化,加载配置
+        } catch (Exception e) {
+            System.out.println("程序化初始化失败,请确认config.properties在当前目录下,并重新运行程序");
+            return;
+        }
+        
+        try {
+            connectToServer();//连接到服务端并获取数据输出流
+        } catch (IOException e) {
+            System.out.println("连接服务器失败,请确保服务器已运行,并重新运行程序!");
+            return;
+        }
+        
+        Log.buildLogsFile();//生成日志文件以及对应的流
+        Log.runtimeInfo("成功连接到服务器！");//将runtimeInfo输出到RuntimInfo.txt中
+        while (true) {
             try {
-                byte[] arr = new byte[new Integer(properties.getProperty("dataSize"))];
+                byte[] arr = new byte[dataSize];
                 Random random = new Random();
                 for (int i = 0; i < arr.length; i++) {
+                    //因为ASCII字符集只有33-126的字符集是可以正确解析的,所以随机数的取值范围从33-126
                     arr[i] = (byte) (random.nextInt(94) + 33);
                 }
-                out.write(arr);
-                bw.write(new String(arr));
-                bw.newLine();
-                bw.flush();
-                logger.info("Data Send Success");
-                Thread.sleep(1000);
-            } catch (SocketException e) {
-                boolean a = true;
-                while (a) {
+                socketDataOut.write(arr);//try是为了处理发送数据的这行代码,如果发送失败会进入Catch阶段.
+                Log.dataInfo(arr);//将发送的data数据输出到data.txt中
+                Log.runtimeInfo("Data Send Success");
+                Thread.sleep(DataInterval);
+            } catch (IOException e) {
+                Log.runtimeInfo("与服务器断开连接，即将尝试重新连接.");
+                Log.buildLogsFile();//生成新的日志文件以及对应的流
+                while (true) {
                     try {
-                        client = new Socket(properties.getProperty("host"), new Integer(properties.getProperty("hostProt")));
-                        logger.info("连接服务端成功");
-                        a = false;
-                    } catch (SocketException e1) {
-                        try {
-                            logger.info("断开连接，等待重连.");
-                            Thread.sleep(5000);
-                        } catch (InterruptedException e2) {
-                            e2.printStackTrace();
-                        }
+                        connectToServer();//重新获取data输出流
+                        Log.runtimeInfo("成功连接到服务器！");
+                        break;
+                    } catch (IOException e1) {
+                        Log.runtimeInfo("连接失败，尝试重新连接.");
+                        Thread.sleep(ReconnectInterval);
                     }
-                    client.setSoTimeout(10000);
-                    //获取Socket的输出流，用来发送数据到服务端
-                    out = new DataOutputStream(client.getOutputStream());
                 }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
             }
         }
-        if (client != null) {
-            //如果构造函数建立起了连接，则关闭套接字，如果没有建立起连接，自然不用关闭
-            bw.close();
-            client.close(); //只关闭socket，其关联的输入输出流也会被关闭
-        }
+    }
+    
+    /**
+     * 对成员变量进行初始化(配置的导入)
+     *
+     * @throws IOException
+     */
+    private static void init() throws IOException {
+        config = new Properties();
+//        config.load(Object.class.getResourceAsStream("/config.properties"));
+        config.load(new FileInputStream(System.getProperty("user.dir")+"/config.properties"));
+        dataSize = Integer.valueOf(config.getProperty("dataSize"));
+        ReconnectInterval = Long.valueOf(config.getProperty("ReconnectInterval"));
+        DataInterval = Long.valueOf(config.getProperty("DataInterval"));
+        host = config.getProperty("host");
+        hostPort = Integer.valueOf(config.getProperty("hostPort"));
+    }
+    
+    /**
+     * 获取给服务器发送数据的输出流
+     *
+     * @return
+     * @throws IOException
+     */
+    private static void connectToServer() throws IOException {
+        client = new Socket(host, hostPort);
+        socketDataOut = new DataOutputStream(client.getOutputStream());
     }
 }
